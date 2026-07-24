@@ -283,7 +283,7 @@ install_secure_boot_deps() {
 }
 
 prepare_secure_boot_signing() {
-  local key_status
+  local key_check_output
 
   MODULE_SIGNING_REQUIRED=false
   if ! secure_boot_enabled; then
@@ -306,6 +306,7 @@ prepare_secure_boot_signing() {
       umask 077
       openssl req -new -x509 -newkey rsa:4096 \
         -keyout "${MODULE_SIGNING_KEY}.new" \
+        -addext "extendedKeyUsage=codeSigning" \
         -outform DER \
         -out "${MODULE_SIGNING_CERT}.new" \
         -nodes \
@@ -318,12 +319,29 @@ prepare_secure_boot_signing() {
     chmod 644 "$MODULE_SIGNING_CERT"
   fi
 
-  mokutil --test-key "$MODULE_SIGNING_CERT" &> /dev/null
-  key_status=$?
-  if [ $key_status -eq 0 ]; then
-    echo -e "${GREEN}DAMX module-signing key is enrolled.${NC}"
-    return 0
-  fi
+  key_check_output=$(LC_ALL=C mokutil --test-key "$MODULE_SIGNING_CERT" 2>&1 || true)
+  case "$key_check_output" in
+    *"is already enrolled"*|*"is already in db"*|*"built-in trusted keyring"*)
+      echo -e "${GREEN}DAMX module-signing key is enrolled.${NC}"
+      return 0
+      ;;
+    *"already in the enrollment request"*)
+      echo -e "${YELLOW}DAMX MOK enrollment is already pending.${NC}"
+      echo -e "${YELLOW}Reboot, complete enrollment in MOK Manager, then run this installer again.${NC}"
+      return 2
+      ;;
+    *"blocked"*)
+      echo -e "${RED}Error: The DAMX module-signing key is blocked by Secure Boot policy.${NC}"
+      return 1
+      ;;
+    *"is not enrolled"*)
+      ;;
+    *)
+      echo -e "${RED}Error: Could not determine whether the DAMX signing key is enrolled.${NC}"
+      echo "$key_check_output"
+      return 1
+      ;;
+  esac
 
   if [ ! -t 0 ]; then
     echo -e "${RED}Error: MOK enrollment requires an interactive terminal.${NC}"
@@ -693,6 +711,9 @@ main_menu() {
         print_banner
         echo -e "${BLUE}Starting complete installation...${NC}"
         perform_install false false
+        if [ $? -eq 2 ]; then
+          exit 2
+        fi
         ;;
       2)
         print_banner
@@ -709,6 +730,9 @@ main_menu() {
         echo -e "${BLUE}Starting reinstallation/update...${NC}"
         echo -e "${YELLOW}This will completely remove the existing installation before installing the new version.${NC}"
         perform_install false true
+        if [ $? -eq 2 ]; then
+          exit 2
+        fi
         ;;
       5)
         print_banner
