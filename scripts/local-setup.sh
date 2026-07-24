@@ -5,7 +5,7 @@
 # Components: Linuwu-Sense (drivers), DAMX-Daemon, and DAMX-GUI
 
 # Constants
-SCRIPT_VERSION="1.0.2-h1-secureboot-test"
+SCRIPT_VERSION="0.9.0"
 INSTALL_DIR="/opt/damx"
 BIN_DIR="/usr/local/bin"
 SYSTEMD_DIR="/etc/systemd/system"
